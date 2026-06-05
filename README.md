@@ -8,6 +8,30 @@ and real-time instrument status via REST API and React UI.
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart TD
+    A["Presentation Layer<br/>Frontend / Cohesion-style UI<br/><br/>User clicks controls such as Power On / Set Power / Measure"]
+    --> B["API Layer<br/>Backend REST API<br/><br/>Receives requests, validates parameters, returns structured results"]
+
+    B --> C["Framework Layer<br/>InstrumentService / Registry<br/><br/>Defines unified business actions:<br/>connect(), power_on(), power_off(), set_power(), measure(), get_status()"]
+
+    C --> D["Adapter Layer<br/>LaserAdapter<br/><br/>Translates unified actions into device-specific SCPI commands;<br/>hides device differences from the service layer"]
+
+    D --> E["Protocol Layer<br/>SCPIProtocol<br/><br/>Sends commands, receives responses, and provides a transport boundary<br/>that could be replaced by TCP / USB / VISA / Vendor SDK"]
+
+    E --> F["Device Layer<br/>LaserDevice Simulator<br/><br/>Executes commands, stores state, returns status, measurements, or errors"]
+
+    F --> E
+    E --> D
+    D --> C
+    C --> B
+    B --> A
+```
+
+---
+
 ## Features
 
 ### Instrument Discovery & Connection
@@ -19,11 +43,11 @@ and real-time instrument status via REST API and React UI.
 - 10 standard SCPI-like commands over REST API
 - Command history with timestamp and response display
 - Input validation: power range enforcement, output-state checks
-- 5% simulated random timeout to reflect real instrument behaviour
+- Deterministic instrument errors for invalid state, unknown commands, and out-of-range values
 
 ### Structured Instrument API
 - High-level endpoints for common laser operations: output toggle, set power, read measured power
-- Backend `LaserInstrumentAPI` maps semantic calls to raw SCPI commands
+- Backend `LaserAdapter` maps semantic calls to raw SCPI commands
 - React control panel uses the structured API while the raw SCPI console remains available
 
 **Supported commands:**
@@ -41,19 +65,23 @@ and real-time instrument status via REST API and React UI.
 | `*RST` | Reset instrument to defaults |
 
 ### Firmware Lifecycle Management
-- State machine: `idle -> uploading -> validating -> applying -> completed / failed`
+- Lifecycle: `idle -> uploading -> validating -> applying -> completed`
 - Progress polling via `GET /api/instruments/{id}/firmware/status`
-- Simulated failure path (10% probability) for robustness testing
+- Deterministic completion, no random failure rate
+
+### SCPI Script Runner
+- Runs newline-delimited SCPI scripts through `POST /api/instruments/{id}/script`
+- Ignores blank lines and `#` comments, then returns per-step pass/fail results
+- Useful for automated validation flows such as connect -> configure -> enable output -> measure
 
 ### Extensible Instrument Framework
 - Abstract `InstrumentBase` class — new instrument types drop in without
   changing the API layer
-- `LaserInstrumentAPI` demonstrates a safe instrument SDK layer above SCPI
-- Separation of concerns: state, SCPI parser, and firmware manager are
-  independent modules
+- `InstrumentService`, `LaserAdapter`, `SCPIProtocol`, and `LaserDevice` make the framework layers explicit
+- Separation of concerns: API routing, registry/service logic, adapter translation, protocol transport, and device state
 
 ### Automated Testing
-- **24 pytest tests** — 12 SCPI unit tests + 12 API integration tests
+- **27 pytest tests** — 12 SCPI unit tests + 12 API integration tests + 3 layer tests
 - **3 Playwright e2e scenarios** — connect, command flow, firmware upgrade
 
 ### Developer Experience
@@ -108,40 +136,16 @@ echo "*IDN?" | ./instrument_driver
 
 ---
 
-## Project Structure
+## Layer Mapping
 
-```
-instrument-control-simulator/
-├── backend/
-│   ├── app/
-│   │   ├── main.py                  # FastAPI app + instrument registry
-│   │   ├── models.py                # Pydantic schemas
-│   │   └── simulator/
-│   │       ├── base.py              # InstrumentBase ABC
-│   │       ├── laser_api.py         # structured API over SCPI
-│   │       ├── laser_simulator.py   # LaserInstrumentSimulator
-│   │       └── firmware.py          # FirmwareManager state machine
-│   └── tests/
-│       ├── test_scpi.py             # 12 SCPI unit tests
-│       └── test_api.py              # 12 API integration tests
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── api/client.ts            # axios API wrapper
-│   │   └── components/
-│   │       ├── InstrumentList.tsx   # discovery + connect
-│   │       ├── ControlPanel.tsx     # structured output/power controls
-│   │       ├── CommandConsole.tsx   # SCPI terminal
-│   │       └── FirmwarePanel.tsx    # upgrade progress
-│   └── e2e/
-│       └── instrument.spec.ts       # Playwright: 3 scenarios
-├── cpp-driver/
-│   ├── instrument_driver.h/cpp      # 6-command driver mock
-│   ├── main.cpp                     # stdin/stdout CLI
-│   └── CMakeLists.txt
-├── docker-compose.yml
-└── .github/workflows/ci.yml
-```
+| Layer | Implementation |
+|-------|----------------|
+| Presentation | `frontend/src/App.tsx`, React components |
+| API | `backend/app/main.py` |
+| Framework | `backend/app/simulator/instrument_service.py` |
+| Adapter | `backend/app/simulator/laser_adapter.py` |
+| Protocol | `backend/app/simulator/scpi_protocol.py` |
+| Device | `backend/app/simulator/laser_device.py` |
 
 ---
 
@@ -155,52 +159,15 @@ instrument-control-simulator/
 | DevOps | Docker, GitHub Actions |
 | Driver mock | C++17, CMake |
 
----
-
-## Architecture Diagram
-
-```mermaid
-flowchart LR
-    User["User / Operator"] --> UI["React + TypeScript UI"]
-    UI --> Client["Axios API Client"]
-    Client --> API["FastAPI REST Service"]
-
-    API --> Registry["Instrument Registry"]
-    API --> Semantic["LaserInstrumentAPI"]
-    API --> Firmware["FirmwareManager"]
-    API --> Script["SCPI Script Runner"]
-
-    Registry --> Simulator["LaserInstrumentSimulator"]
-    Semantic --> Simulator
-    Firmware --> State["InstrumentState"]
-    Simulator --> State
-    Simulator --> Parser["SCPI Command Parser"]
-
-    Parser --> Responses["SCPI Responses / Errors"]
-    Responses --> API
-
-    CPP["C++17 Driver Mock CLI"] --> Parser
-
-    Tests["pytest + Playwright"] --> API
-    Tests --> UI
-
-    Docker["Docker Compose"] --> UI
-    Docker --> API
-    CI["GitHub Actions CI"] --> Tests
-    CI --> Docker
-```
-
----
-
 ## Resume-ready Features
 
-- Built a reusable instrument simulation framework around an `InstrumentBase` abstraction, allowing new instrument types to be added without changing the FastAPI service layer.
+- Built a reusable instrument simulation framework with explicit API, Framework, Adapter, Protocol, and Device layers.
 - Implemented registry-based instrument discovery and connection management with `*IDN?` identity validation and per-instrument session state.
 - Developed a SCPI-style command parser for laser control, including power configuration, output toggling, measurement reads, reset, firmware version, and error queries.
-- Added a structured `LaserInstrumentAPI` layer that maps semantic operations such as `set_power`, `set_output`, and `read_power` onto raw SCPI commands.
-- Designed a firmware upgrade lifecycle state machine with progress polling, version updates, conflict handling, and simulated failure paths.
+- Added a `LaserAdapter` layer that maps semantic operations such as `set_power`, `power_on`, `power_off`, and `measure` onto raw SCPI commands.
+- Designed a firmware upgrade lifecycle with progress polling, version updates, and conflict handling.
 - Built a React + TypeScript control UI with instrument discovery, structured laser controls, raw SCPI console, command history, and firmware progress tracking.
 - Added newline-delimited SCPI script execution with per-step pass/fail reporting, input validation, and connection enforcement.
-- Covered backend and UI workflows with 24 pytest tests and 3 Playwright end-to-end scenarios.
+- Covered backend and UI workflows with 27 pytest tests and 3 Playwright end-to-end scenarios.
 - Set up a Docker Compose local environment and GitHub Actions pipeline for backend tests, frontend build, e2e tests, and Docker image validation.
 - Implemented a standalone C++17 driver mock with CMake and stdin/stdout command handling to demonstrate cross-language instrument-control exposure.

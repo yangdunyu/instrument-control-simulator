@@ -1,13 +1,12 @@
 """Integration tests for the REST API endpoints.
 
 Uses FastAPI's TestClient (httpx-backed).
-conftest.py sets SIMULATE_ERRORS=false before app import.
 """
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import INSTRUMENTS, _firmware_managers, app
+from app.main import app, service
 
 client = TestClient(app)
 LASER_ID = "laser-001"
@@ -16,12 +15,7 @@ LASER_ID = "laser-001"
 @pytest.fixture(autouse=True)
 def reset_state() -> None:
     """Reset instrument and firmware state before each test."""
-    inst = INSTRUMENTS[LASER_ID]
-    inst.reset()
-    inst.state.connected = False
-    fm = _firmware_managers[LASER_ID]
-    fm.update_state = "idle"
-    fm.progress = 0
+    service.reset_for_tests(LASER_ID)
 
 
 def test_list_instruments() -> None:

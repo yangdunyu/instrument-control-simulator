@@ -3,8 +3,6 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
-    environment:
-      - SIMULATE_ERRORS=true
 
   frontend:
     build: ./frontend

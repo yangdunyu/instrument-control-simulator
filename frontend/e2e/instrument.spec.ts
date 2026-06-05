@@ -40,8 +40,8 @@ test('firmware upgrade shows progress and completes', async ({ page }) => {
   // Progress state should appear (uploading / validating / applying)
   await expect(page.locator('.badge-yellow').first()).toBeVisible({ timeout: 3000 })
 
-  // Eventually reaches completed or failed
+  // Eventually reaches completed
   await expect(
-    page.locator('.badge-green, .badge-red').last(),
+    page.locator('.badge-green').last(),
   ).toBeVisible({ timeout: 10000 })
 })

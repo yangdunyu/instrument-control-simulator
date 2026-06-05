@@ -13,7 +13,6 @@ const BADGE_CLASS: Record<string, string> = {
   validating: 'badge-yellow',
   applying: 'badge-yellow',
   completed: 'badge-green',
-  failed: 'badge-red',
 }
 
 const FILL_CLASS: Record<string, string> = {
@@ -21,7 +20,6 @@ const FILL_CLASS: Record<string, string> = {
   validating: 'running',
   applying: 'running',
   completed: 'completed',
-  failed: 'failed',
 }
 
 export function FirmwarePanel({ fwStatus, instrumentStatus, onUpgrade, disabled }: Props) {

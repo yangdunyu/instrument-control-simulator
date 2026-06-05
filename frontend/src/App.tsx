@@ -38,7 +38,7 @@ export default function App() {
   // Poll firmware status while an upgrade is in progress
   useEffect(() => {
     if (!fwStatus) return
-    if (['idle', 'completed', 'failed'].includes(fwStatus.state)) return
+    if (['idle', 'completed'].includes(fwStatus.state)) return
     const t = setInterval(() => {
       api.getFirmwareStatus(INSTRUMENT_ID).then(setFwStatus).catch(() => {})
     }, 1000)

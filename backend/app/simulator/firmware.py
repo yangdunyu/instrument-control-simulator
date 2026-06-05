@@ -1,19 +1,18 @@
-import random
 import threading
 import time
 
-from .laser_simulator import InstrumentState
+from .laser_device import InstrumentState
 
 
 class FirmwareManager:
     """Manages the firmware upgrade lifecycle for an instrument.
 
-    State machine:
+    Lifecycle:
         idle -> uploading (20%) -> validating (40%) -> applying (80%)
-             -> completed (100%)  |  failed (10% probability)
+             -> completed (100%)
     """
 
-    STATES = ("idle", "uploading", "validating", "applying", "completed", "failed")
+    STATES = ("idle", "uploading", "validating", "applying", "completed")
 
     def __init__(self, state: InstrumentState) -> None:
         self._state = state
@@ -27,7 +26,7 @@ class FirmwareManager:
         Returns False if an upgrade is already in progress.
         """
         with self._lock:
-            if self.update_state not in ("idle", "completed", "failed"):
+            if self.update_state not in ("idle", "completed"):
                 return False
             self.update_state = "uploading"
             self.progress = 0
@@ -46,13 +45,6 @@ class FirmwareManager:
                 self.update_state = state
                 self.progress = progress
             time.sleep(1)
-
-        # 10% chance of failure
-        if random.random() < 0.10:
-            with self._lock:
-                self.update_state = "failed"
-                self.progress = 0
-            return
 
         with self._lock:
             self._state.firmware_version = "1.1.0"
