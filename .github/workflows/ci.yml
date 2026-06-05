@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-test:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest httpx
+        working-directory: backend
+      - name: Run tests
+        run: pytest tests/ -v
+        working-directory: backend
+
+  frontend-build:
+    name: frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install & build
+        run: npm ci && npm run build
+        working-directory: frontend
+
+  e2e:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Start backend
+        run: |
+          pip install -r requirements.txt
+          SIMULATE_ERRORS=false uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 3
+        working-directory: backend
+      - name: Install frontend deps + Playwright
+        run: npm ci && npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Run Playwright tests
+        run: npx playwright test
+        working-directory: frontend
+        env:
+          CI: true
+
+  docker-build:
+    name: docker compose build
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: docker compose build --no-cache
